@@ -1,0 +1,61 @@
+version: '3.3'
+
+services:
+  db:
+    image: mariadb
+    hostname: db-meli
+    secrets:
+      - db_root_password
+      - db_dba_password
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          memory: 128M
+        limits:
+          memory: 256M
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_USER: dba
+      MYSQL_DATABASE: gdrive
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+      MYSQL_PASSWORD_FILE: /run/secrets/db_dba_password
+    networks:
+      - meli-net
+
+      
+  python:
+    image: meli-python
+    hostname: python-meli
+    secrets:
+      - db_dba_password
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        reservations:
+          memory: 128M
+        limits:
+          memory: 256M
+    ports:
+      - 15000:15000
+    environment:
+      MYSQL_USER: dba
+      MYSQL_DATABASE: gdrive      
+      MYSQL_PASSWORD_FILE: /run/secrets/db_dba_password
+    networks:
+      - meli-net
+    
+secrets:
+  db_root_password:
+    external: true
+  db_dba_password:
+    external: true
+
+networks:
+  meli-net:
+    external: true
