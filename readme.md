@@ -68,6 +68,12 @@ A continuacion se dara un ejemplo de uso de app.py
 > _token\_gmail.json_
 
 
+En caso de querer cambiar la cuenta de Drive preconfigurada, hay que reemplazar los archivos credentials_drive.json y credentials_gmail.json
+```bash
+docker cp /ruta/nueva/credentials_drive.json $(docker ps -a -q --filter="name=apps_python"):/home/credentials_drive.json
+docker cp /ruta/nueva/credentials_gmail.json $(docker ps -a -q --filter="name=apps_python"):/home/credentials_gmail.json
+```
+
 Finalizada la prueba, para eliminar todo lo relacionado al challenge ejecutar
 ```bash
 ./delete_challenge_meli.sh

@@ -41,8 +41,6 @@ services:
           memory: 128M
         limits:
           memory: 256M
-    ports:
-      - 15000:15000
     environment:
       MYSQL_USER: dba
       MYSQL_DATABASE: gdrive      

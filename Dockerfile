@@ -10,7 +10,6 @@ RUN apk update && \
 COPY ./app.py /home/
 COPY ./_dbhelper.py /home/
 COPY ./_gghelper.py /home/
-COPY ./_mahelper.py /home/
 COPY ./credentials_drive.json /home/
 COPY ./credentials_gmail.json /home/
 

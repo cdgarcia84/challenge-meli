@@ -1,68 +1,76 @@
-import os
+from _dbhelper import DataBase
+from _gghelper import Drive, Gmail
 
-from googleapiclient.errors import HttpError
+def prueba_db(db):
+    print('\nVerificacion en la base de datos\n')
+    print('Hostname: ' + db.HOST)
+    print('Username: ' + db.USER)
+    print('Password: ' + db.PASSWORD)
+    print('Database: ' + db.DATABASE)
+    print('Para establece una conexion directamente al motor:')
+    print('\tmysql -h ' + db.HOST + ' -u ' + db.USER + ' -p\n')
+    datos = db.check()
 
-import _dbhelper
-import _gghelper
-import _mahelper
+    print('Tabla archivo (SELECT * FROM archivos) :')
+    print('-'*200)
+    print(datos['col_arch'])
+    print('-'*200)
+    for arch in datos['arch']:
+        print(arch)
+    print('-'*200+'\n')
 
-# nombre de host donde se ejecuta la base de datos
-HOST = 'db-meli'
-# lee la varieble de entorno donde se almacena el valor correspondiente
-USER = os.getenv('MYSQL_USER')
-PASSWORD = open(os.getenv('MYSQL_PASSWORD_FILE'),'r').read().strip()
-DATABASE = os.getenv('MYSQL_DATABASE')
+    print('Tabla archivopublico (SELECT * FROM archivopublico):')
+    print('-'*200)
+    print(datos['col_archpub'])
+    print('-'*200)
+    for arch in datos['archpub']:
+        print(arch)
+    print('-'*200)
 
-# crea la base de datos, en caso de no existir
-_dbhelper.createDatabase(_dbhelper.connection(HOST, USER, PASSWORD), DATABASE)
 
-# se conecta a la base de datos definida en DATABASE y crea las tablas archivos y archivospublicos
-conn = _dbhelper.connection(HOST, USER, PASSWORD, DATABASE)
-_dbhelper.createTables(conn)
+if __name__ == "__main__":
+    # realiza la conexion a la base de datos
+    db = DataBase()
 
-# realiza las conexiones a los recursos de google
-service_drive = _gghelper.drive()
-service_gmail = _gghelper.gmail()
+    # realiza las conexiones a los recursos de google
+    service_drive = Drive()
+    service_gmail = Gmail()    
 
-me = service_drive.about().get(fields="user/emailAddress").execute()["user"]["emailAddress"]
+    # se obtiene la lista de todos los archivo del drive
+    items = service_drive.files().get('files', [])
 
-results = service_drive.files().list(
-    fields="nextPageToken, files(name, id, mimeType, owners/emailAddress, owners/permissionId, shared, modifiedTime)").execute()
+    print("\n/////////////////////////////////////////////////////////////////////////////////////////////////////////////\n")
+    print('Se ha accedido al Google Drive de ' + service_drive.me())
+    print('Hay ' + str(len(items)) + ' archivos.')
+    
+    # se realiza el registro de los archivos en la base de datos
+    db.insertFile(items)
+    print('Los mismos ya fueron registrados en la base de datos y/o actualizados sus valores.\n')
 
-items = results.get('files', [])
-for item in items :    
-    idArchivo = item["id"]
-    nombreArchivo = item["name"]
-    extension = item["mimeType"]
-    ownerId = item['owners'][0]['permissionId']
-    ownerEmail = item['owners'][0]['emailAddress']
-    shared = item["shared"]
-    fechaModificacion = item["modifiedTime"]
-    if shared == True :
-        # inserta el archivo compartido para historial
-        _dbhelper.insertFilePublic(conn, idArchivo, nombreArchivo, extension, ownerEmail, fechaModificacion)
-        
-        try:
-            resultados = service_drive.permissions().list(fileId=idArchivo, fields="nextPageToken, permissions(id)").execute()
-        except HttpError as error:
-            print('Ocurrio un error al listar un archivo en drive: %s' % error)
-            
-        permisos = resultados.get('permissions', [])
-        for permiso in permisos :
-            idPermiso = permiso["id"]
-            if idPermiso != ownerId :
-                # quitar el permiso compartido
-                _gghelper.remove_permission(service_drive,idArchivo,idPermiso)
-                
-                # genera el cuerpo del mail al owner del archivo
-                mensaje = _mahelper.message(me, ownerEmail, 'Se convirtio a Privado un archivo suyo en Google Drive', nombreArchivo)
-                
-                # envia el mail notificando
-                _mahelper.send_message(service_gmail, me, mensaje)
+    for item in items:
+        print ('Archivo: ' + item["name"] + ' - ' + item["mimeType"] + ' con fecha de modificacion ' + item["modifiedTime"])
+        if item["shared"] == True :                            
+            permisos = service_drive.permissions(item["id"]).get('permissions', [])
+            for permiso in permisos :
+                idPermiso = permiso["id"]
+                if idPermiso == "anyoneWithLink":
+                    print('\tEste archivo es accesible para todos por medio un link.')
+                    
+                    # quitar el permiso compartido
+                    service_drive.remove_permission(item["id"],idPermiso)
+                    print('\tSe le revoco dicho permiso.')
 
-# se realiza el registro de los archivos listado en drive                
-items = results.get('files', [])
-_dbhelper.insertFile(conn, items)
+                    # inserta el archivo compartido para historial
+                    db.insertFilePublic(item["id"], item["name"], item["mimeType"], item['owners'][0]['emailAddress'], item["modifiedTime"])
+                    print('\tSe guardo el registro en el historial de archivos compartidos.')
+                    
+                    # envia el mail notificando
+                    service_gmail.send_message(service_drive.me(), item['owners'][0]['emailAddress'], item["name"])
+                    print('\tSe envio un mail a ' + item['owners'][0]['emailAddress'] + ' indicando sobre el cambio efectuado.')
+    #db.close()
+    print('\nFin de la ejecucion.')
 
-# finaliza la coneccion a la base de datos
-_dbhelper.close(conn)
+    print("\n/////////////////////////////////////////////////////////////////////////////////////////////////////////////\n")
+    prueba_db(db)
+    db.close()
+    print("\n/////////////////////////////////////////////////////////////////////////////////////////////////////////////\n")
